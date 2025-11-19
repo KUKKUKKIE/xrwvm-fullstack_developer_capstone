@@ -1,18 +1,10 @@
-# Uncomment the required imports before adding the code
-
-from django.shortcuts import render
-from django.http import HttpResponseRedirect, HttpResponse
 from django.contrib.auth.models import User
-from django.shortcuts import get_object_or_404, render, redirect
-from django.contrib.auth import logout
-from django.contrib import messages
-from datetime import datetime
+from django.contrib.auth import logout, login, authenticate
 from .models import CarMake, CarModel
 from .populate import initiate
 from .restapis import get_request, analyze_review_sentiments, post_review
 
 from django.http import JsonResponse
-from django.contrib.auth import login, authenticate
 import logging
 import json
 from django.views.decorators.csrf import csrf_exempt
@@ -102,9 +94,9 @@ def get_dealer_reviews(request, dealer_id):
     # Analyze sentiment for each review (skip if sentiment analyzer not available)
     for review_detail in reviews:
         try:
-            response = analyze_review_sentiments(review_detail['review'])
-            review_detail['sentiment'] = response.get('sentiment', 'neutral')
-        except:
+            analyze_review_sentiments(review_detail['review'])
+            review_detail['sentiment'] = 'neutral'
+        except Exception:
             # If sentiment analysis fails, set default sentiment
             review_detail['sentiment'] = 'neutral'
 
@@ -123,10 +115,13 @@ def add_review(request):
     if request.user.is_anonymous is False:
         data = json.loads(request.body)
         try:
-            response = post_review(data)
+            post_review(data)
             return JsonResponse({"status": 200})
-        except:
-            return JsonResponse({"status": 401, "message": "Error in posting review"})
+        except Exception:
+            return JsonResponse({
+                "status": 401,
+                "message": "Error in posting review"
+            })
     else:
         return JsonResponse({"status": 403, "message": "Unauthorized"})
 
@@ -139,5 +134,8 @@ def get_cars(request):
     car_models = CarModel.objects.select_related('car_make')
     cars = []
     for car_model in car_models:
-        cars.append({"CarModel": car_model.name, "CarMake": car_model.car_make.name})
+        cars.append({
+            "CarModel": car_model.name,
+            "CarMake": car_model.car_make.name
+        })
     return JsonResponse({"CarModels": cars})
