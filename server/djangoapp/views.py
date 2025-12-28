@@ -108,7 +108,9 @@ def get_dealer_reviews(request, dealer_id):
     # Analyze sentiment for each review
     for review_detail in reviews:
         try:
-            sentiment = analyze_review_sentiments(review_detail.get("review", ""))
+            sentiment = analyze_review_sentiments(
+                review_detail.get("review", "")
+                )
             review_detail["sentiment"] = sentiment
         except Exception as e:
             logger.exception("Error analyzing review sentiment: %s", e)
@@ -129,7 +131,9 @@ def get_dealer_details(request, dealer_id):
 @csrf_exempt
 def add_review(request):
     if request.user.is_anonymous:
-        return JsonResponse({"status": 403, "message": "Unauthorized"}, status=403)
+        return JsonResponse(
+            {"status": 403, "message": "Unauthorized"}, status=403
+            )
 
     if request.method != "POST":
         return JsonResponse({"error": "Invalid request method"}, status=405)
@@ -137,7 +141,9 @@ def add_review(request):
     try:
         data = json.loads(request.body)
     except json.JSONDecodeError:
-        return JsonResponse({"status": 400, "message": "Invalid JSON body"}, status=400)
+        return JsonResponse(
+            {"status": 400, "message": "Invalid JSON body"}, status=400
+            )
 
     try:
         post_review(data)
