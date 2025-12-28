@@ -9,31 +9,43 @@ import logging
 import json
 from django.views.decorators.csrf import csrf_exempt
 
-
 # Get an instance of a logger
 logger = logging.getLogger(__name__)
 
 
 # Create your views here.
 
-# Create a `login_request` view to handle sign in request
+# Handle sign in request
 @csrf_exempt
 def login_user(request):
-    # Get username and password from request.POST dictionary
-    data = json.loads(request.body)
-    username = data['userName']
-    password = data['password']
-    # Try to check if provide credential can be authenticated
+    if request.method != "POST":
+        return JsonResponse({"error": "Invalid request method"}, status=405)
+
+    try:
+        data = json.loads(request.body)
+    except json.JSONDecodeError:
+        return JsonResponse({"error": "Invalid JSON body"}, status=400)
+
+    username = data.get("userName")
+    password = data.get("password")
+
+    # Try to check if provided credentials can be authenticated
     user = authenticate(username=username, password=password)
-    data = {"userName": username}
+
+    # Default response if authentication fails
+    response_data = {"userName": username}
+
     if user is not None:
-        # If user is valid, call login method to login current user
+        # If user is valid, log them in
         login(request, user)
-        data = {"userName": username, "status": "Authenticated"}
-    return JsonResponse(data)
+        response_data = {"userName": username, "status": "Authenticated"}
+        return JsonResponse(response_data)
+
+    # If authentication fails, return 401 with same structure as original code
+    return JsonResponse(response_data, status=401)
 
 
-# Create a `logout_request` view to handle sign out request
+# Handle sign out request
 @csrf_exempt
 def logout_request(request):
     logout(request)  # Terminate user session
@@ -41,21 +53,28 @@ def logout_request(request):
     return JsonResponse(data)
 
 
-# Create a `registration` view to handle sign up request
+# Handle sign up request
 @csrf_exempt
 def registration(request):
-    data = json.loads(request.body)
-    username = data['userName']
-    password = data['password']
-    first_name = data['firstName']
-    last_name = data['lastName']
-    email = data['email']
-    username_exist = False
+    if request.method != "POST":
+        return JsonResponse({"error": "Invalid request method"}, status=405)
+
+    try:
+        data = json.loads(request.body)
+    except json.JSONDecodeError:
+        return JsonResponse({"error": "Invalid JSON body"}, status=400)
+
+    username = data.get("userName")
+    password = data.get("password")
+    first_name = data.get("firstName")
+    last_name = data.get("lastName")
+    email = data.get("email")
 
     try:
         # Check if user already exists
         User.objects.get(username=username)
-        username_exist = True
+        # If found, user is already registered
+        return JsonResponse({"error": "Already Registered"}, status=400)
     except User.DoesNotExist:
         # If not, create new user
         user = User.objects.create_user(
@@ -70,13 +89,8 @@ def registration(request):
         data = {"userName": username, "status": "Authenticated"}
         return JsonResponse(data)
 
-    if username_exist:
-        data = {"error": "Already Registered"}
-        return JsonResponse(data)
 
-
-# Update the `get_dealerships` view to render the index page with
-# a list of dealerships
+# Render list of dealerships
 def get_dealerships(request, state="All"):
     if state == "All":
         endpoint = "/fetchDealers"
@@ -86,7 +100,7 @@ def get_dealerships(request, state="All"):
     return JsonResponse({"status": 200, "dealers": dealerships})
 
 
-# Create a `get_dealer_reviews` view to render the reviews of a dealer
+# Render the reviews of a dealer
 def get_dealer_reviews(request, dealer_id):
     endpoint = f"/fetchReviews/dealer/{dealer_id}"
     reviews = get_request(endpoint)
@@ -94,44 +108,53 @@ def get_dealer_reviews(request, dealer_id):
     # Analyze sentiment for each review
     for review_detail in reviews:
         try:
-            analyze_review_sentiments(review_detail['review'])
-            review_detail['sentiment'] = 'neutral'
-        except Exception:
+            sentiment = analyze_review_sentiments(review_detail.get("review", ""))
+            review_detail["sentiment"] = sentiment
+        except Exception as e:
+            logger.exception("Error analyzing review sentiment: %s", e)
             # If sentiment analysis fails, set default sentiment
-            review_detail['sentiment'] = 'neutral'
+            review_detail["sentiment"] = "neutral"
 
     return JsonResponse({"status": 200, "reviews": reviews})
 
 
-# Create a `get_dealer_details` view to render the dealer details
+# Render the dealer details
 def get_dealer_details(request, dealer_id):
     endpoint = f"/fetchDealer/{dealer_id}"
     dealership = get_request(endpoint)
     return JsonResponse({"status": 200, "dealer": dealership})
 
 
-# Create a `add_review` view to submit a review
+# Submit a review
+@csrf_exempt
 def add_review(request):
-    if request.user.is_anonymous is False:
+    if request.user.is_anonymous:
+        return JsonResponse({"status": 403, "message": "Unauthorized"}, status=403)
+
+    if request.method != "POST":
+        return JsonResponse({"error": "Invalid request method"}, status=405)
+
+    try:
         data = json.loads(request.body)
-        try:
-            post_review(data)
-            return JsonResponse({"status": 200})
-        except Exception:
-            return JsonResponse({
-                "status": 401,
-                "message": "Error in posting review"
-            })
-    else:
-        return JsonResponse({"status": 403, "message": "Unauthorized"})
+    except json.JSONDecodeError:
+        return JsonResponse({"status": 400, "message": "Invalid JSON body"}, status=400)
+
+    try:
+        post_review(data)
+        return JsonResponse({"status": 200})
+    except Exception as e:
+        logger.exception("Error posting review: %s", e)
+        return JsonResponse(
+            {"status": 401, "message": "Error in posting review"},
+            status=401
+        )
 
 
 def get_cars(request):
-    count = CarMake.objects.filter().count()
-    print(count)
+    count = CarMake.objects.count()
     if count == 0:
         initiate()
-    car_models = CarModel.objects.select_related('car_make')
+    car_models = CarModel.objects.select_related("car_make")
     cars = []
     for car_model in car_models:
         cars.append({
